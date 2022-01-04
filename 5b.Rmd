@@ -1,0 +1,205 @@
+---
+title: "5b - Aniket Maheshwari"
+output: word_document
+---
+
+Setting up our environment and importing important libraries:
+
+```{r}
+### Clear the environment 
+rm(list = ls())
+
+
+### First we will set the directory of the R script 
+setwd("C:/Users/anike/Desktop/Sem 1/EAS 506 Statistical Data Mining/Homework/Homework 5")
+
+
+## loading the important libraries 
+library(ISLR)
+library(corrplot)
+library(MASS)
+library(klaR)
+library(leaps)
+library(lattice)
+library(ggplot2)
+library(corrplot)
+library(car)
+library(caret)
+library(class)
+library(plotly)
+library(rpart)
+#install.packages("randomForest")
+library(randomForest)
+#install.packages("neuralnet")
+library(neuralnet)
+#install.packages('fastDummies')
+library(fastDummies)
+```
+
+
+Importing the dataset: 
+
+```{r}
+load('cleveland.RData')
+data1 <- cleveland
+
+# diag2 here can be disregarded 
+data1 <- subset(data1, select = c(1:14))
+dim(data1)
+
+```
+
+So the Cleveland dataset has 296 observation and 14 variables. Our response diag1 is purchase which is a binary categorical variable with 'buff' which has 160  observations and 'sick' with 136 observations.
+
+Dividing the Dataset into Test and Train Set.
+
+```{r}
+set.seed(1)
+test_index <- sample(1:nrow(data1), .2 * nrow(data1))
+test_data <- data1[test_index, ]
+train_data <- data1[-test_index, ]
+y_test_true <- test_data$diag1
+y_train_true <- train_data$diag1
+```
+
+The train dataset has 237 obserations and the test dataset has 59 observations.
+
+CART: 
+Classification for decision Trees A decision tree is a flowchart-like structure in which each
+internal node represents a “test” on an attribute, each branch represents the outcome of
+the test, and each leaf node represents a class label. The paths from root to leaf represent
+classification rules.
+
+```{r}
+set.seed(1)
+model.control <- rpart.control(minsplit = 5,xval = 10 , cp = 0 )
+dt.fit <- rpart (diag1~. , data = train_data , method = "class" , control = model.control)
+
+```
+
+Plotting the decision Tree:
+```{r}
+x11()
+plot(dt.fit)
+text(dt.fit , use.n = TRUE , cex = 1)
+```
+
+pruning the tree back:
+```{r}
+min_cp = which.min(dt.fit$cptable[,4] )
+x11()
+plot(dt.fit$cptable[,4] , main = " Cp for model selection" , ylab = " cv error")
+
+pruned_fit <- prune(dt.fit , cp = dt.fit$cptable[min_cp , 1])
+```
+
+
+Plotting the prune fit: 
+```{r}
+x11()
+plot(dt.fit$cptable[,4] , main = " Cp for model selection" , ylab = " cv error")
+```
+
+Fitting the prune decision tree: 
+
+```{r}
+y_hat_dt <- predict(pruned_fit , newdata = test_data , type = "class")
+table(y_hat_dt , y_test_true)
+# test error : 25.42%
+mean(y_test_true != y_hat_dt) * 100
+
+```
+
+
+The test error using prune desision tree is 25.42%.
+
+Random Forest: 
+Random decision forests are an ensemble learning method for classification, regression and other tasks that operates by constructing a multitude of decision trees at training time. 
+
+```{r}
+set.seed(1)
+rf.fit <- randomForest(diag1~. , data = train_data , ntree = 750 )
+```
+
+Plotting the importance of features: 
+```{r}
+x11()
+varImpPlot(rf.fit, main='Main Features')
+importance(rf.fit)
+```
+
+Predicting the Test Error:
+
+```{r}
+y_hat_rf <- predict(rf.fit , newdata = test_data , type = "response") 
+table(y_hat_rf , y_test_true)
+
+#Test Error: 11.86441
+mean(y_test_true != y_hat_rf) * 100
+
+
+```
+
+The test error using random forest is 11.86%.
+
+
+Neural Net: 
+A neural network is a network or circuit of neurons composed of artificial neurons or nodes.
+In R, we can use package neuralnet() for computing neural network. Before giving the test data to the network, 
+I need to convert all the variables into integer because neuralnet() does not work on categorical variables. 
+
+```{r}
+train_nn <- dummy_cols(train_data , select_columns = c('gender', 'cp' , 'restecg' , 'exang' , 'slope' , 'thal' , 'fbs'),remove_selected_columns = TRUE)
+test_nn <- dummy_cols(test_data,select_columns = c('gender', 'cp' , 'restecg' , 'exang' , 'slope' , 'thal' , 'fbs'),remove_selected_columns = TRUE )
+
+
+# converting response variable into 0 and 1. if 'buff' : 0 and if 'sick' then 1.
+train_data_diag1 <- as.numeric(train_data$diag1) -1 
+test_data_diag1 <- as.numeric(test_data$diag1) -1 
+
+
+train_nn <- subset(train_nn , select = c(-7))
+test_nn <- subset(test_nn , select = c(-7))
+
+train_nn <- cbind(train_nn , train_data_diag1)
+test_nn <- cbind(test_nn, test_data_diag1)
+
+names(train_nn)[26] <- 'diag1'
+names(test_nn)[26] <- 'diag1'
+
+y_hat_nn_test <- test_nn$diag1
+
+```
+
+Neural Net with hidden layers 1-5:
+
+```{r}
+test_error_store <- c()
+
+set.seed(1)
+for (i in 1:5) {
+  #fit the neural network with "i" neurons
+  nn1 <- neuralnet(diag1~. , data = train_nn , hidden = i , stepmax = 10^9 , err.fct = "ce" , linear.output = FALSE)
+  
+  #saving plots
+  p = plot(nn1)
+  ggsave(p , file = paste0("neural net plot" , i ,".png"), width = 40, height = 40, units = "cm")
+  
+  #calculate the train error 
+  pred_nn <- predict(nn1 , newdata = test_nn)
+  y_hat_test_nn <- round(pred_nn)
+  test_err <- length(which(y_hat_nn_test != y_hat_test_nn)) / length (y_hat_test_nn)
+  test_error_store <- c(test_error_store , test_err)
+  
+}
+
+test_error_store
+
+```
+
+
+```{r}
+which.min(test_error_store)
+```
+
+So the neural net with 4 has the least test error rate. 
