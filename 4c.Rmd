@@ -1,0 +1,285 @@
+---
+title: "4c - Aniket Maheshwari"
+output: word_document
+---
+Setting up our environment and importing important libraries:
+```{r}
+### Clear the environment 
+rm(list = ls())
+
+
+### First we will set the directory of the R script 
+setwd("C:/Users/anike/Desktop/Sem 1/EAS 506 Statistical Data Mining/Homework/Homework 4")
+
+
+
+## Loading all the libraries 
+library(ISLR)
+library(corrplot)
+library(MASS)
+library(klaR)
+library(leaps)
+library(lattice)
+library(ggplot2)
+library(corrplot)
+library(car)
+library(caret)
+library(class)
+```
+
+
+Loading the dataset: 
+```{r}
+data('Auto')
+str(Auto)
+summary(Auto)
+dim(Auto)
+```
+
+So the dataset 'Auto' has 392 rows and 9 columns or features. All the features are numerical variables except the 'name' feature.
+
+Now i'll create my response variable 'mpg01' that will be a binary variable which contains 1 if the value is more than the median of mpg variable and 0 if the value is more than the median of mpg variable.
+
+```{r}
+median_value <- median(Auto$mpg)
+mpg01 <- ifelse(Auto$mpg > median_value,1,0)
+Auto <- subset(Auto, select = c(2:9))
+Auto <- cbind(mpg01, Auto)
+Auto <- subset (Auto , select = -(9))
+head(Auto,3)
+```
+
+Exploratory Data Analysis: 
+
+1) Histograms: 
+
+```{r}
+
+
+```
+
+The histograms of variables looks alright and no variable seems to be highly left or right skewed.
+
+2. Boxplots: 
+```{r}
+
+```
+
+3. Scatterplots: 
+```{r}
+x11()
+scatterplotMatrix(~mpg01+cylinders+displacement+horsepower+weight, data=Auto, main="Scatterplot Matrix with Features : cylinders+displacement+horsepower+weight")
+
+x11()
+scatterplotMatrix(~mpg01+acceleration+year+origin, data=Auto, main="Scatterplot Matrix with Features : acceleration+year+origin")
+
+
+```
+From the plots above it can be told that cylinder, displacement, horsepower and weight are highly negatively related to our feature mpg01. 
+
+4. Co-relation Plot: 
+
+```{r}
+x11()
+corrplot(cor(Auto) , method = 'number')
+
+```
+
+
+Co-relation plot confirms our finding from scatter plot. Cylinder, displacement, horsepower and weight are highly negatively related to our feature mpg01. Acceleration, Year and Origin are positively co-related to our response feature.
+
+Splitting the data into train and test set:
+
+Now, I'll split the data into test and train dataset in 2:8 ratio. After the splitting, the train dataset will have 315 rows and 9 columns and test data set will have 77 rows and 9 columns. I'll use createDataPartition() method from caret package so that i have equal proportion of 0 and 1 in both train and test dataset.
+
+
+```{r}
+set.seed(1)
+trainIndex <- createDataPartition(Auto$mpg, p = 0.80,list =FALSE,times = 1)
+train_data <- Auto[trainIndex,]
+test_data <- Auto[-trainIndex,]
+dim(train_data)
+dim(test_data)
+```
+
+LDA: 
+
+Linear Discriminant analysis is a true decision boundary discovery algorithm. It assumes that the class has common covariance and it’s decision boundary is linear separating the class.
+
+```{r}
+lda.model <- lda (mpg01~cylinders+displacement+horsepower+weight, data=train_data)
+lda.model
+```
+
+Fitting LDA to test set: 
+
+```{r}
+pred.lda.model = predict(lda.model, newdata = test_data )
+table(Predicted=pred.lda.model$class, Survived=test_data$mpg01)
+test_pred_y <- pred.lda.model$class
+
+```
+
+
+Error for LDA:
+
+```{r}
+
+data.frame(
+  Accuracy = (mean(test_data$mpg01 == test_pred_y) ) * 100,
+  Error = (mean(test_data$mpg01 != test_pred_y) ) * 100
+)
+```
+
+I get the accuracy of 85.8% and error rate of 14.1% from LDA model with cylinders, displacement, horsepower and weight as predictor.
+
+QDA: 
+QDA (Quadratic Discriminant Analysis) is used to find a non-linear boundary between classifiers.Unlike LDA, QDA assumes Different covariance for each of the response classes.
+
+```{r}
+qda.model <- qda (mpg01~cylinders+displacement+horsepower+weight, data=train_data)
+qda.model
+
+```
+
+Fitting QDA for test dataset: 
+
+```{r}
+pred.qda.model <- predict(qda.model , newdata = test_data)
+table(Predicted=pred.qda.model$class, Survived=test_data$mpg01)
+qda_test_pred_y = pred.qda.model$class
+```
+
+Error for QDA: 
+
+```{r}
+data.frame(
+  Accuracy = (mean(test_data$mpg01 == qda_test_pred_y) ) * 100,
+  Error = (mean(test_data$mpg01 != qda_test_pred_y) ) * 100
+)
+
+```
+
+I got the accuracy of 84.6% and error rate of 15.3% from QDA model with cylinders, displacement, horsepower and weight as predictor.
+
+
+Logistic Regression: 
+
+Logistic Regression uses linear regression with the addition of sigmoid function which helps in returning output in between 0-1 range. Here as i have two categorical features 0 and 1, if the logistic regression returns value lower than 0.5
+I’ll classify that as 0 and it returns value more than that then I’ll classify that as 1.
+
+```{r}
+logistic_reg <- glm(mpg01~cylinders+displacement+horsepower+weight,data = train_data, family = binomial)
+summary(logistic_reg)
+
+```
+
+
+Here, It seems like 'horsepower' is the most significant feature.
+
+Fitting the Logistic function to test dataset: 
+
+```{r}
+logistic_reg_pred_model = predict(logistic_reg, newdata = test_data, type="response")
+pred_values = rep(0, length(test_data$mpg01))
+pred_values[logistic_reg_pred_model > 0.5] = 1
+table(Predicted= pred_values , Survived = test_data$mpg01)
+
+```
+
+
+Accuracy and Error for Logistic Model: 
+
+```{r}
+data.frame(
+  Accuracy = (mean(test_data$mpg01 == pred_values) ) * 100,
+  Error = (mean(test_data$mpg01 != pred_values) ) * 100
+)
+
+
+```
+
+
+I got the accuracy of 84.6% and error rate of 15.3% from QDA model with cylinders, displacement, horsepower and weight as predictor. This is same as QDA accuracy and error.
+
+
+KNN: 
+K = 1:
+
+```{r}
+x_train <- subset(train_data , select = -c(1))
+x_test <- subset(test_data , select = -c(1))
+
+```
+
+```{r}
+set.seed(123)
+testing_knn <- knn(x_train , x_test , train_data$mpg01 , k=1)
+confusion_matrix_knn <- table(testing_knn , test_data$mpg01)
+confusion_matrix_knn1<- confusionMatrix(confusion_matrix_knn)
+confusion_matrix_knn1
+```
+
+Accuracy and Error:
+```{r}
+data.frame(
+Accuracy = (mean(test_data$mpg01 == testing_knn)) * 100, 
+Error = (mean(test_data$mpg01 != testing_knn)) * 100
+)
+```
+
+K = 1 gives Accuracy of 83.3 and Error rate of 16.6.
+
+k = 5: 
+
+```{r}
+set.seed(123)
+testing_knn1 <- knn(x_train , x_test , train_data$mpg01 , k=5)
+confusion_matrix_knn2 <- table(testing_knn1 , test_data$mpg01)
+confusion_matrix_knn3<- confusionMatrix(confusion_matrix_knn2)
+confusion_matrix_knn3
+```
+
+Accuracy and Error:
+```{r}
+data.frame(
+Accuracy = (mean(test_data$mpg01 == testing_knn1)) * 100, 
+Error = (mean(test_data$mpg01 != testing_knn1)) * 100
+)
+
+```
+
+
+K = 5 gives Accuracy of 84.6 and Error rate of 15.3.
+
+
+k = 10: 
+```{r}
+set.seed(123)
+testing_knn2 <- knn(x_train , x_test , train_data$mpg01 , k=10)
+confusion_matrix_knn4 <- table(testing_knn2 , test_data$mpg01)
+confusion_matrix_knn5<- confusionMatrix(confusion_matrix_knn4)
+confusion_matrix_knn5
+
+```
+
+Accuracy and Error:
+```{r}
+data.frame(
+Accuracy = (mean(test_data$mpg01 == testing_knn2)) * 100, 
+Error = (mean(test_data$mpg01 != testing_knn2)) * 100
+)
+
+```
+
+
+K = 10 gives Accuracy of 83.3 and Error rate of 16.6. This is similar to k = 1 accuracy and error.
+
+
+
+
+
+
+
+
+
